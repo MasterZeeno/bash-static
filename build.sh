@@ -1,26 +1,5 @@
 #!/bin/bash
-#
-# build static bash because we need exercises in minimalism
-# Copyright © 2015 Robert Xu <robxu9@gmail.com>
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the “Software”), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-#
+
 # For Linux, also builds musl for truly static linking if
 # musl is not installed.
 
@@ -31,6 +10,46 @@ shopt -s nullglob
 # load version info
 # shellcheck source=./version.sh
 . version.sh
+
+download_and_verify() {
+  curl -LO "$1"
+  curl -LO "$1.$2"
+  gpg --batch \
+  --verify "$1.$2" "$1"
+}
+
+init_bash() {
+  BASH_BASE_NAME="bash-$BASH_VERSION"
+  BASH_FULL_URL="$BASH_URL/$BASH_BASE_NAME"
+  BASH_TAR_URL="${BASH_FULL_URL}.tar.gz"
+  BASH_TAR="${BASH_TAR_URL##*/}"
+  BASH_PATCH_NAME="${BASH_BASE_NAME%.*}"
+  BASH_PATCH_URL="$BASH_URL/$BASH_PATCH_NAME-patches"
+}
+
+init_musl() {
+  MUSL_BASE_NAME="musl-$MUSL_VERSION"
+  MUSL_FULL_URL="$MUSL_URL/$MUSL_BASE_NAME"
+  MUSL_TAR_URL="${MUSL_FULL_URL}.tar.gz"
+  MUSL_TAR="${MUSL_TAR_URL##*/}"
+}
+
+init_gpg() {
+  export GNUPGHOME="$(mktemp -d)"
+  gpg_args=(
+    --batch
+    --keyserver
+    hkps://keyserver.ubuntu.com:443
+    --recv-keys
+  )
+  gpg_pub_keys=(
+    7C0135FB088AAF6C66C650B9BB5869F064EA74AB
+    836489290BB6B70F99FFDA0556BCDB593020450F
+  )
+  for key in "${gpg_pub_keys[@]}"; do
+    gpg "${gpg_args[@]}" "$key"
+  done
+}
 
 target="$1"
 arch="$2"
@@ -50,43 +69,37 @@ if [ -d build ]; then
   rm -rf build
 fi
 
-mkdir build # make build directory
-pushd build
+# make build directory
+mkdir build && pushd build
 
 # pre-prepare gpg for verificaiton
 echo "= preparing gpg"
-GNUPGHOME="$(mktemp -d)"
-export GNUPGHOME
-# public key for bash
-gpg --batch --keyserver hkps://keyserver.ubuntu.com:443 --recv-keys 7C0135FB088AAF6C66C650B9BB5869F064EA74AB
-# public key for musl
-gpg --batch --keyserver hkps://keyserver.ubuntu.com:443 --recv-keys 836489290BB6B70F99FFDA0556BCDB593020450F
+init_gpg
 
 # download tarballs
 echo "= downloading bash"
-curl -LO http://ftp.gnu.org/gnu/bash/bash-${bash_version}.tar.gz
-curl -LO http://ftp.gnu.org/gnu/bash/bash-${bash_version}.tar.gz.sig
-gpg --batch --verify bash-${bash_version}.tar.gz.sig bash-${bash_version}.tar.gz
+init_bash
+download_and_verify "$BASH_TAR_URL" sig
 
 echo "= extracting bash"
-tar -xf bash-${bash_version}.tar.gz
+tar -xf "$BASH_TAR"
 
 echo "= patching bash"
-bash_patch_prefix=$(echo "bash${bash_version}" | sed -e 's/\.//g')
-for lvl in $(seq 1 $bash_patch_level); do
-    curl -LO http://ftp.gnu.org/gnu/bash/bash-${bash_version}-patches/"${bash_patch_prefix}"-"$(printf '%03d' "$lvl")"
-    curl -LO http://ftp.gnu.org/gnu/bash/bash-${bash_version}-patches/"${bash_patch_prefix}"-"$(printf '%03d' "$lvl")".sig
-    gpg --batch --verify "${bash_patch_prefix}"-"$(printf '%03d' "$lvl")".sig "${bash_patch_prefix}"-"$(printf '%03d' "$lvl")"
 
-    pushd bash-${bash_version}
-    patch -p0 < ../"${bash_patch_prefix}"-"$(printf '%03d' "$lvl")"
+for PATCH in $(seq 1 ${BASH_VERSION##*.}); do
+    PADDED_PATCH="$(printf '%03d' "$PATCH")"
+    PATCH_FILE="${BASH_PATCH_NAME//[-.]/}-${PADDED_LVL}"
+    download_and_verify "$BASH_PATCH_URL/$PATCH_FILE" sig
+    
+    pushd "$BASH_BASE_NAME"
+    patch -p0 < ../"$PATCH_FILE"
     popd
 done
 
 echo "= patching with any custom patches we have"
 for i in ../custom/*.patch; do
     echo $i
-    pushd bash-${bash_version}
+    pushd "$BASH_BASE_NAME"
     patch -p1 < ../"$i"
     popd
 done
@@ -98,22 +111,21 @@ if [ "$target" = "linux" ]; then
     echo "= skipping installation of musl because this is alpine linux (and it is already installed)"
   else
     echo "= downloading musl"
-    curl -LO https://musl.libc.org/releases/musl-${musl_version}.tar.gz
-    curl -LO https://musl.libc.org/releases/musl-${musl_version}.tar.gz.asc
-    gpg --batch --verify musl-${musl_version}.tar.gz.asc musl-${musl_version}.tar.gz
+    init_musl
+    download_and_verify "$MUSL_TAR_URL" asc
 
     echo "= extracting musl"
-    tar -xf musl-${musl_version}.tar.gz
+    tar -xf "$MUSL_TAR"
 
     echo "= building musl"
     working_dir=$(pwd)
 
     install_dir=${working_dir}/musl-install
 
-    pushd musl-${musl_version}
+    pushd "$MUSL_BASE_NAME"
     ./configure --prefix="${install_dir}"
     make install
-    popd # musl-${musl-version}
+    popd
 
     echo "= setting CC to musl-gcc"
     export CC=${working_dir}/musl-install/bin/musl-gcc
@@ -144,20 +156,25 @@ fi
 
 echo "= building bash"
 
-pushd bash-${bash_version}
+pushd "$BASH_BASE_NAME"
 autoconf -f
 CFLAGS="$CFLAGS -Os" ./configure --without-bash-malloc "${configure_args[@]}"
 make
 make tests
-popd # bash-${bash_version}
 
-popd # build
+# "$BASH_BASE_NAME"
+popd
+# build
+popd
 
 if [ ! -d releases ]; then
   mkdir releases
 fi
 
 echo "= extracting bash binary"
-cp build/bash-${bash_version}/bash releases
+cp "build/$BASH_BASE_NAME/bash" releases
 
 echo "= done"
+
+
+

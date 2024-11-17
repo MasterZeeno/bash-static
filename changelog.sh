@@ -5,4 +5,4 @@
 . version.sh
 
 # and just output to NOTES.txt
-echo "bash ${bash_version}-$(printf '%03d' $bash_patch_level), with musl ${musl_version}" > NOTES.txt
+echo "BASH ${BASH_VERSION}-$(printf '%03d' $BASH_PATCH_LEVEL), with MUSL ${MUSL_VERSION}" > NOTES.txt

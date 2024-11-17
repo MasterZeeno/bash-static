@@ -1,9 +1,14 @@
 #!/bin/bash
 
-bash_version="5.2"
-bash_patch_level=15
-musl_version="1.2.3"
+get_latest_version() {
+  curl -s "$1$2" |
+    grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' |
+      sort -V | tail -n 1
+}
 
-export bash_version
-export bash_patch_level
-export musl_version
+export BASH_URL='https://ftp.gnu.org/gnu/bash'
+export BASH_VERSION="$(get_latest_version "$BASH_URL" '/')"
+export BASH_PATCH_LEVEL="${BASH_VERSION##*.}"
+
+export MUSL_URL='https://musl.libc.org/releases'
+export MUSL_VERSION="$(get_latest_version "$BASH_URL" '.html')"
