@@ -11,11 +11,17 @@ shopt -s nullglob
 # shellcheck source=./version.sh
 . version.sh
 
-download_and_verify() {
-  curl -LO "$1"
-  curl -LO "$1.$2"
+download_verify_unzip() {
+  local tar_url="$1"
+  local tar_file="${tar_url##*/}"
+  
+  curl -LO "$tar_url"
+  curl -LO "$tar_url.$2"
   gpg --batch \
-  --verify "$1.$2" "$1"
+  --verify "$tar_file.$2" "$tar_file"
+  
+  echo "= extracting $tar_file"
+  tar -xf "$tar_file"
 }
 
 init_bash() {
@@ -80,17 +86,14 @@ init_gpg
 # download tarballs
 echo "= downloading bash"
 init_bash
-download_and_verify "$BASH_TAR_URL" sig
-
-echo "= extracting bash"
-tar -xf "$BASH_TAR"
+download_verify_unzip "$BASH_TAR_URL" sig
 
 echo "= patching bash"
 
 for PATCH in $(seq 1 ${BASH_VERSION##*.}); do
     PADDED_PATCH="$(printf '%03d' "$PATCH")"
     PATCH_FILE="${BASH_PATCH_NAME//[-.]/}-${PADDED_LVL}"
-    download_and_verify "$BASH_PATCH_URL/$PATCH_FILE" sig
+    download_verify_unzip "$BASH_PATCH_URL/$PATCH_FILE" sig
     
     pushd "$BASH_BASE_NAME"
     patch -p0 < ../"$PATCH_FILE"
@@ -113,10 +116,7 @@ if [ "$target" = "linux" ]; then
   else
     echo "= downloading musl"
     init_musl
-    download_and_verify "$MUSL_TAR_URL" asc
-
-    echo "= extracting musl"
-    tar -xf "$MUSL_TAR"
+    download_verify_unzip "$MUSL_TAR_URL" asc
 
     echo "= building musl"
     working_dir=$(pwd)
