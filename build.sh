@@ -35,7 +35,8 @@ init_musl() {
 }
 
 init_gpg() {
-  export GNUPGHOME="$(mktemp -d)"
+  GNUPGHOME="$(mktemp -d)"
+  export GNUPGHOME
   gpg_args=(
     --batch
     --keyserver
