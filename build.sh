@@ -41,7 +41,8 @@ init_musl() {
 }
 
 init_gpg() {
-  GNUPGHOME="$(mktemp -d)"
+  GNUPGHOME="$(pwd)/tmp"
+  mkdir -p "$GNUPGHOME"
   export GNUPGHOME
   gpg_args=(
     --batch
