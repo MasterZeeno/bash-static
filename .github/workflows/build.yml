@@ -27,7 +27,7 @@ jobs:
         sudo apt-get install -qq build-essential gpg
     - name: install msys2 packages
       if: ${{ matrix.os == 'windows-latest' }}
-      uses: msys2/setup-msys2@v2.25.0
+      uses: msys2/setup-msys2@v2.26.0
       with:
         update: true
         install: >-
